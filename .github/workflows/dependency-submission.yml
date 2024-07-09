@@ -62,7 +62,7 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "For more information on submitting Maven dependencies from your own workflow, refer to [the submission action](https://github.com/advanced-security/maven-dependency-submission-action)" >> $GITHUB_STEP_SUMMARY
             echo "::error No pom.xml file detected in repository root path."
-            exit 1
+            exit 0
           fi
 
       - name: Configure cache
