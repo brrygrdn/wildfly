@@ -1,0 +1,81 @@
+run-name: ${{ github.event.inputs.ecosystem }} dependency submission
+on: 
+  workflow_dispatch:
+    inputs:
+      ecosystem:
+        type: string
+        default: 'Maven'
+        required: true
+      commit-ref:
+        type: string
+        default: "refs/heads/main"
+        required: true
+      commit-sha:
+        type: string
+        default: "8984cb5b4f11b32452c10b7afc30c3b5231adec1"
+        required: true
+      runs-on:
+        type: string
+        default: ubuntu-latest
+        required: true
+permissions:
+  contents: write
+env:
+  JAVA_VERSION: 21
+  JAVA_DISTRIB: "temurin"
+jobs:
+  submit-maven:
+    runs-on: ${{ github.event.inputs.runs-on }}
+    steps:
+      - name: Checkout ${{ github.event.inputs.commit-ref }} at ${{ github.event.inputs.commit-sha }}
+        id: checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          ref: ${{ github.event.inputs.commit-sha }}
+
+      - name: Setup Java
+        id: setup-ecosystem
+        uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9 # v4.2.1
+        with:
+          overwrite-settings: false
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIB }}
+
+      - name: Log toolchain versions
+        id: log-toolchain-versions
+        run: |
+          version=$(mvn -q -v)
+          echo "::notice Using Java ${{ env.JAVA_VERSION }} (${{ env.JAVA_DISTRIB }}) with Maven ${version}"
+        shell: bash
+
+      - name: Validate Maven Project
+        id: validate-project
+        run: |
+          if mvn validate -q > /dev/null 2>&1  ; then
+            echo "::debug mvn validate indicates repository root is a Maven project."
+            echo "{valid-project}={true}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::debug mvn validate indicates repository root is not a Maven project."
+            echo "{valid-project}={false}" >> "$GITHUB_OUTPUT"
+            echo "### :warning: Maven validate failed in repository root" >> $GITHUB_STEP_SUMMARY
+            echo "We were unable to validate a pom.xml in the repository root. If your repository requires additional setup steps, you may need to check in your own workflow." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "For more information on submitting Maven dependencies from your own workflow, refer to [the submission action](https://github.com/advanced-security/maven-dependency-submission-action)" >> $GITHUB_STEP_SUMMARY
+            echo "::error No pom.xml file detected in repository root path."
+            exit 1
+          fi
+
+      - name: Configure cache
+        id: configure-cache
+        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9 # v4.0.2
+        with:
+          path: "~/.m2/repository"
+          key: ${{ runner.os }}-jdk${{ env.JAVA_VERSION }}-${{ env.JAVA_DISTRIB }}-maven${{ steps.current-maven.version }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-jdk${{ env.JAVA_VERSION }}-${{ env.JAVA_DISTRIB }}-maven${{ steps.current-maven.version }}-
+
+      - name: Submit Dependency Snapshot
+        id: submit-dependency-snapshot
+        uses: actions/maven-dependency-submission-action@5d0f9011b55d6268922128af45275986303459c3 # v4.0.3
+        with:
+          snapshot-sha: ${{ github.event.inputs.commit-sha }}
+          snapshot-ref: ${{ github.event.inputs.commit-ref }}
